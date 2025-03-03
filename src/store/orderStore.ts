@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from './authStore';
+import { socket, connectSocket, disconnectSocket, subscribeToOrderUpdates } from '../lib/socket';
 
 export type LpgType = '6kg' | '12kg' | '25kg';
 export type OrderStatus = 'pending' | 'accepted' | 'out_for_delivery' | 'delivered' | 'cancelled';
@@ -29,6 +30,7 @@ interface OrderState {
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   assignOrder: (orderId: string, deliveryPersonId: string) => Promise<void>;
   subscribeToOrders: () => () => void;
+  updateOrderStatusFromSocket: (orderId: string, status: OrderStatus) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => ({
@@ -157,7 +159,19 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     }
   },
 
+  updateOrderStatusFromSocket: (orderId: string, status: OrderStatus) => {
+    set((state) => ({
+      orders: state.orders.map((order) =>
+        order.id === orderId ? { ...order, status } : order
+      ),
+      currentOrder: state.currentOrder?.id === orderId
+        ? { ...state.currentOrder, status }
+        : state.currentOrder
+    }));
+  },
+
   subscribeToOrders: () => {
+    // Existing Supabase realtime subscription
     const user = useAuthStore.getState().user;
     
     let subscription: any;

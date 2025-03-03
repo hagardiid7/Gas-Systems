@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { useOrderStore, Order } from '../store/orderStore';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useOrderStore, Order, OrderStatus } from '../store/orderStore';
+import { subscribeToOrderUpdates } from '../lib/socket';
 import Navbar from '../components/Navbar';
 import OrderCard from '../components/OrderCard';
 import GoogleMap from '../components/GoogleMap';
@@ -10,16 +11,37 @@ const OrdersPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showMap, setShowMap] = useState(false);
 
+  const { updateOrderStatusFromSocket } = useOrderStore();
+  
   useEffect(() => {
     getUserOrders();
     
     // Subscribe to real-time updates
     const unsubscribe = subscribeToOrders();
     
+    // Cleanup function
     return () => {
       unsubscribe();
     };
   }, [getUserOrders, subscribeToOrders]);
+
+  // Handle WebSocket subscriptions for individual orders
+  useEffect(() => {
+    const cleanupFunctions: (() => void)[] = [];
+    
+    orders.forEach((order) => {
+      const cleanup = subscribeToOrderUpdates(order.id, (status: string) => {
+        if (['pending', 'accepted', 'out_for_delivery', 'delivered', 'cancelled'].includes(status)) {
+          updateOrderStatusFromSocket(order.id, status as OrderStatus);
+        }
+      });
+      cleanupFunctions.push(cleanup);
+    });
+    
+    return () => {
+      cleanupFunctions.forEach((cleanup) => cleanup());
+    };
+  }, [orders, updateOrderStatusFromSocket]);
 
   const handleViewMap = (order: Order) => {
     setSelectedOrder(order);
