@@ -160,6 +160,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   },
 
   updateOrderStatusFromSocket: (orderId: string, status: OrderStatus) => {
+    console.log(`[Socket] Received status update for order ${orderId}: ${status}`);
     set((state) => ({
       orders: state.orders.map((order) =>
         order.id === orderId ? { ...order, status } : order
@@ -171,18 +172,20 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   },
 
   subscribeToOrders: () => {
-    // Existing Supabase realtime subscription
     const user = useAuthStore.getState().user;
+    
+    // Connect socket if not already connected
+    connectSocket();
     
     let subscription: any;
     
     if (user?.role === 'admin' || user?.role === 'delivery') {
       subscription = supabase
         .channel('orders-channel')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'orders' 
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'orders'
         }, () => {
           get().getAllOrders();
         })
@@ -190,9 +193,9 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     } else if (user) {
       subscription = supabase
         .channel('user-orders-channel')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
           table: 'orders',
           filter: `user_id=eq.${user.id}`
         }, () => {
@@ -205,6 +208,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       if (subscription) {
         supabase.removeChannel(subscription);
       }
+      // Disconnect socket when component unmounts
+      disconnectSocket();
     };
   }
 }));
